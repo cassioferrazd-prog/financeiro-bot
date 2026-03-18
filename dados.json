@@ -1,0 +1,114 @@
+[
+  {
+    "data": "18/03/2026, 16:40:38",
+    "tipo": "entrada",
+    "valor": 50,
+    "descricao": "camiseta"
+  },
+  {
+    "data": "18/03/2026, 16:41:11",
+    "tipo": "saida",
+    "valor": 20,
+    "descricao": "gasolina"
+  },
+  {
+    "data": "18/03/2026, 16:45:05",
+    "tipo": "entrada",
+    "valor": 50,
+    "descricao": "camiseta "
+  },
+  {
+    "data": "18/03/2026, 16:45:15",
+    "tipo": "saída",
+    "valor": 10,
+    "descricao": "camiseta"
+  },
+  {
+    "data": "18/03/2026, 16:47:11",
+    "tipo": "entrada",
+    "valor": 50,
+    "descricao": "camiseta"
+  },
+  {
+    "data": "18/03/2026, 16:47:20",
+    "tipo": "saída",
+    "valor": 50,
+    "descricao": "camiseta"
+  },
+  {
+    "data": "18/03/2026, 16:48:55",
+    "tipo": "entrada",
+    "valor": 50,
+    "descricao": "entrada 50 camiseta"
+  },
+  {
+    "data": "18/03/2026, 16:49:27",
+    "tipo": "entrada",
+    "valor": 50,
+    "descricao": "vendi 50 camiseta"
+  },
+  {
+    "data": "18/03/2026, 16:49:27",
+    "tipo": "saida",
+    "valor": 20,
+    "descricao": "gastei 20 gasolina"
+  },
+  {
+    "data": "18/03/2026, 16:49:27",
+    "tipo": "saida",
+    "valor": 100,
+    "descricao": "paguei 100 fornecedor"
+  },
+  {
+    "data": "18/03/2026, 16:49:27",
+    "tipo": "entrada",
+    "valor": 80,
+    "descricao": "recebi 80 pix"
+  },
+  {
+    "data": "2026-03-19T00:00:00.000Z",
+    "tipo": "entrada",
+    "valor": 3000,
+    "descricao": "vendi 3000"
+  },
+  {
+    "data": "2026-03-18T19:53:36.454Z",
+    "tipo": "saida",
+    "valor": 20,
+    "descricao": "gastei 20"
+  },
+  {
+    "data": "2026-03-18T19:53:42.567Z",
+    "tipo": "saida",
+    "valor": 10,
+    "descricao": "gastei 10"
+  },
+  {
+    "data": "2026-03-18T00:00:00.000Z",
+    "tipo": "entrada",
+    "valor": 2000,
+    "descricao": "vendi 2000",
+    "categoria": "Receita"
+  },
+  {
+    "data": "2026-03-18T00:00:00.000Z",
+    "tipo": "saida",
+    "valor": 20,
+    "descricao": "gastei 20 almoço",
+    "categoria": "Alimentação"
+  },
+  {
+    "data": "2026-03-18T00:00:00.000Z",
+    "tipo": "saida",
+    "valor": 10,
+    "descricao": "gastei 10 entregadorhoje",
+    "categoria": "Logística"
+  },
+  {
+    "data": "2026-03-18T21:07:29.855Z",
+    "tipo": "saida",
+    "valor": 230,
+    "descricao": "gastei 230",
+    "categoria": "Outros"
+  }
+]
