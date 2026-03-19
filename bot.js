@@ -2,17 +2,14 @@ const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
 const fs = require('fs');
 
-const client = new Client({
-    authStrategy: new LocalAuth()
-});
-
 const arquivo = 'dados.json';
 
+if (!fs.existsSync(arquivo)) {
+    fs.writeFileSync(arquivo, JSON.stringify([]));
+}
+
 function carregarDados() {
-    if (!fs.existsSync(arquivo)) {
-        fs.writeFileSync(arquivo, JSON.stringify([]));
-    }
-    return JSON.parse(fs.readFileSync(arquivo));
+    return JSON.parse(fs.readFileSync(arquivo, 'utf8'));
 }
 
 function salvarDados(dados) {
@@ -37,7 +34,6 @@ function saldoTotal() {
 
 function resumoMes() {
     const dados = carregarDados();
-
     const mesAtual = new Date().toISOString().slice(0, 7);
 
     let entrada = 0;
@@ -85,16 +81,13 @@ function resumoHoje() {
 function resumoCategoriasMes() {
     const dados = carregarDados();
     const mesAtual = new Date().toISOString().slice(0, 7);
-
     const categorias = {};
 
     for (const item of dados) {
         if (item.data.startsWith(mesAtual) && item.tipo === 'saida') {
-
             if (!categorias[item.categoria]) {
                 categorias[item.categoria] = 0;
             }
-
             categorias[item.categoria] += item.valor;
         }
     }
@@ -114,124 +107,131 @@ function resumoCategoriasMes() {
     return texto;
 }
 
+const client = new Client({
+    authStrategy: new LocalAuth(),
+    puppeteer: {
+        headless: true,
+        args: ['--no-sandbox', '--disable-setuid-sandbox']
+    }
+});
+
 client.on('qr', qr => {
+    console.log('================================');
+    console.log('ESCANEIE O QR CODE ABAIXO');
+    console.log('================================');
     qrcode.generate(qr, { small: true });
-    console.log('QR RECEIVED');
 });
 
 client.on('ready', () => {
     console.log('✅ WhatsApp conectado!');
 });
 
+client.on('authenticated', () => {
+    console.log('🔐 Autenticado com sucesso!');
+});
+
+client.on('auth_failure', msg => {
+    console.log('❌ Falha na autenticação:', msg);
+});
+
+client.on('disconnected', reason => {
+    console.log('⚠️ WhatsApp desconectado:', reason);
+});
+
 client.on('message_create', async msg => {
+    try {
+        if (!msg.fromMe) return;
+        if (msg.from.includes('@g.us')) return;
 
-    if (!msg.fromMe) return;
+        const texto = msg.body.toLowerCase().trim();
+        const partes = texto.split(' ');
+        const comando = partes[0];
 
-    const texto = msg.body.toLowerCase().trim();
-    const partes = texto.split(' ');
+        if (texto === 'saldo') {
+            await msg.reply(💰 Saldo atual: R$ ${saldoTotal().toFixed(2)});
+            return;
+        }
 
-    const comando = partes[0];
+        if (texto === 'relatorio') {
+            await msg.reply(resumoMes());
+            return;
+        }
 
-    if (texto === 'saldo') {
-        const saldo = saldoTotal();
-        msg.reply(💰 Saldo atual: R$ ${saldo.toFixed(2)});
-        return;
+        if (texto === 'hoje') {
+            await msg.reply(resumoHoje());
+            return;
+        }
+
+        if (texto === 'categorias') {
+            await msg.reply(resumoCategoriasMes());
+            return;
+        }
+
+        if (comando === 'venda') {
+            const valor = parseFloat((partes[1] || '').replace(',', '.'));
+            if (isNaN(valor)) return;
+
+            const dados = carregarDados();
+            dados.push({
+                tipo: 'entrada',
+                categoria: 'venda',
+                valor,
+                data: hoje()
+            });
+            salvarDados(dados);
+            return;
+        }
+
+        if (comando === 'compra') {
+            const valor = parseFloat((partes[1] || '').replace(',', '.'));
+            const categoria = partes.slice(2).join(' ') || 'mercadoria';
+            if (isNaN(valor)) return;
+
+            const dados = carregarDados();
+            dados.push({
+                tipo: 'saida',
+                categoria,
+                valor,
+                data: hoje()
+            });
+            salvarDados(dados);
+            return;
+        }
+
+        if (comando === 'despesa') {
+            const valor = parseFloat((partes[1] || '').replace(',', '.'));
+            const categoria = partes.slice(2).join(' ') || 'despesa';
+            if (isNaN(valor)) return;
+
+            const dados = carregarDados();
+            dados.push({
+                tipo: 'saida',
+                categoria,
+                valor,
+                data: hoje()
+            });
+            salvarDados(dados);
+            return;
+        }
+
+        if (comando === 'gasto') {
+            const valor = parseFloat((partes[1] || '').replace(',', '.'));
+            const categoria = partes.slice(2).join(' ') || 'variado';
+            if (isNaN(valor)) return;
+
+            const dados = carregarDados();
+            dados.push({
+                tipo: 'saida',
+                categoria,
+                valor,
+                data: hoje()
+            });
+            salvarDados(dados);
+            return;
+        }
+    } catch (erro) {
+        console.error('ERRO AO PROCESSAR MENSAGEM:', erro);
     }
-
-    if (texto === 'relatorio') {
-        msg.reply(resumoMes());
-        return;
-    }
-
-    if (texto === 'hoje') {
-        msg.reply(resumoHoje());
-        return;
-    }
-
-    if (texto === 'categorias') {
-        msg.reply(resumoCategoriasMes());
-        return;
-    }
-
-    if (comando === 'venda') {
-
-        const valor = parseFloat(partes[1]);
-
-        if (isNaN(valor)) return;
-
-        const dados = carregarDados();
-
-        dados.push({
-            tipo: 'entrada',
-            categoria: 'venda',
-            valor: valor,
-            data: hoje()
-        });
-
-        salvarDados(dados);
-        return;
-    }
-
-    if (comando === 'compra') {
-
-        const valor = parseFloat(partes[1]);
-        const categoria = partes.slice(2).join(' ') || 'mercadoria';
-
-        if (isNaN(valor)) return;
-
-        const dados = carregarDados();
-
-        dados.push({
-            tipo: 'saida',
-            categoria: categoria,
-            valor: valor,
-            data: hoje()
-        });
-
-        salvarDados(dados);
-        return;
-    }
-
-    if (comando === 'despesa') {
-
-        const valor = parseFloat(partes[1]);
-        const categoria = partes.slice(2).join(' ') || 'despesa';
-
-        if (isNaN(valor)) return;
-
-        const dados = carregarDados();
-
-        dados.push({
-            tipo: 'saida',
-            categoria: categoria,
-            valor: valor,
-            data: hoje()
-        });
-
-        salvarDados(dados);
-        return;
-    }
-
-    if (comando === 'gasto') {
-
-        const valor = parseFloat(partes[1]);
-        const categoria = partes.slice(2).join(' ') || 'variado';
-
-        if (isNaN(valor)) return;
-
-        const dados = carregarDados();
-
-        dados.push({
-            tipo: 'saida',
-            categoria: categoria,
-            valor: valor,
-            data: hoje()
-        });
-
-        salvarDados(dados);
-        return;
-    }
-
 });
 
 client.initialize();
