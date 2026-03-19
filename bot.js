@@ -1,5 +1,6 @@
 // =============================================
-// BOT FINANCEIRO WHATSAPP - VERSÃO CORRIGIDA E DEBUG
+// BOT FINANCEIRO WHATSAPP - VERSÃO CORRIGIDA (sem repetições)
+// Debug + comandos tolerantes + testes facilitados
 // Railway - março 2026
 // =============================================
 
@@ -21,7 +22,7 @@ if (!fs.existsSync(arquivo)) fs.writeFileSync(arquivo, JSON.stringify([]));
 function carregarDados() { return JSON.parse(fs.readFileSync(arquivo, 'utf8')); }
 function salvarDados(dados) { fs.writeFileSync(arquivo, JSON.stringify(dados, null, 2)); }
 
-// ==================== MANIPULAÇÃO DE DATA ====================
+// ==================== FUNÇÕES DE DATA ====================
 function parseData(dataStr) {
     if (!dataStr) return new Date().toISOString();
     const hoje = new Date();
@@ -47,7 +48,7 @@ function formatData(iso) {
     return d.toISOString().slice(0, 10).split('-').reverse().join('/');
 }
 
-// ==================== FUNÇÕES DE RELATÓRIO ====================
+// ==================== RELATÓRIOS ====================
 function saldoTotal() {
     const dados = carregarDados();
     return dados.reduce((acc, item) => acc + (item.tipo === 'entrada' ? item.valor : -item.valor), 0);
@@ -57,12 +58,12 @@ function resumoMes() {
     const dados = carregarDados();
     const mesAtual = new Date().toISOString().slice(0, 7);
     let entrada = 0, saida = 0;
-    for (const item of dados) {
+    dados.forEach(item => {
         if (item.data.startsWith(mesAtual)) {
             if (item.tipo === 'entrada') entrada += item.valor;
             if (item.tipo === 'saida') saida += item.valor;
         }
-    }
+    });
     const saldo = entrada - saida;
     return `📊 RELATÓRIO DO MÊS (${mesAtual})\n\n💰 Entradas: R$ ${entrada.toFixed(2)}\n💸 Saídas: R$ ${saida.toFixed(2)}\n📈 Saldo: R$ ${saldo.toFixed(2)}`;
 }
@@ -71,12 +72,12 @@ function resumoHoje() {
     const dados = carregarDados();
     const hoje = new Date().toISOString().slice(0, 10);
     let entrada = 0, saida = 0;
-    for (const item of dados) {
+    dados.forEach(item => {
         if (item.data.startsWith(hoje)) {
             if (item.tipo === 'entrada') entrada += item.valor;
             if (item.tipo === 'saida') saida += item.valor;
         }
-    }
+    });
     const saldo = entrada - saida;
     return `📅 HOJE (${hoje})\n\n💰 Entradas: R$ ${entrada.toFixed(2)}\n💸 Saídas: R$ ${saida.toFixed(2)}\n📈 Resultado: R$ ${saldo.toFixed(2)}`;
 }
@@ -85,17 +86,17 @@ function resumoCategoriasMes() {
     const dados = carregarDados();
     const mesAtual = new Date().toISOString().slice(0, 7);
     const categorias = {};
-    for (const item of dados) {
+    dados.forEach(item => {
         if (item.data.startsWith(mesAtual) && item.tipo === 'saida') {
             categorias[item.categoria] = (categorias[item.categoria] || 0) + item.valor;
         }
-    }
+    });
     const nomes = Object.keys(categorias);
-    if (nomes.length === 0) return 'Nenhuma despesa registrada este mês.';
+    if (nomes.length === 0) return 'Nenhuma despesa este mês.';
     let texto = '📂 CATEGORIAS DO MÊS\n';
-    for (const nome of nomes.sort()) {
+    nomes.sort().forEach(nome => {
         texto += `\n• ${nome}: R$ ${categorias[nome].toFixed(2)}`;
-    }
+    });
     return texto;
 }
 
@@ -103,138 +104,129 @@ function graficoCategoriasMes() {
     const dados = carregarDados();
     const mesAtual = new Date().toISOString().slice(0, 7);
     const cat = {};
-    let totalSaida = 0;
-
-    for (const item of dados) {
+    let total = 0;
+    dados.forEach(item => {
         if (item.data.startsWith(mesAtual) && item.tipo === 'saida') {
             cat[item.categoria] = (cat[item.categoria] || 0) + item.valor;
-            totalSaida += item.valor;
+            total += item.valor;
         }
-    }
-
-    if (totalSaida === 0) return 'Sem despesas no mês para gráfico.';
-
-    const maxBar = 20;
-    let texto = '📊 GRAFICO GASTOS DO MÊS (ASCII)\n\n';
-    Object.entries(cat)
-        .sort((a, b) => b[1] - a[1])
-        .forEach(([catNome, val]) => {
-            const percent = val / totalSaida;
-            const barLength = Math.round(percent * maxBar);
-            const bar = '█'.repeat(barLength) + ' '.repeat(maxBar - barLength);
-            texto += `${catNome.padEnd(15)} | ${bar} R$ ${val.toFixed(2)} (${(percent * 100).toFixed(0)}%)\n`;
-        });
-    texto += `\nTotal saídas: R$ ${totalSaida.toFixed(2)}`;
+    });
+    if (total === 0) return 'Sem gastos para gráfico.';
+    const max = 20;
+    let texto = '📊 GRAFICO GASTOS MÊS\n\n';
+    Object.entries(cat).sort((a,b) => b[1]-a[1]).forEach(([nome, val]) => {
+        const pct = val / total;
+        const tam = Math.round(pct * max);
+        const bar = '█'.repeat(tam) + ' '.repeat(max - tam);
+        texto += `${nome.padEnd(12)} | ${bar} R$ ${val.toFixed(2)}\n`;
+    });
+    texto += `\nTotal: R$ ${total.toFixed(2)}`;
     return texto;
 }
 
 function ultimosLancamentos() {
     const dados = carregarDados();
-    if (dados.length === 0) return 'Nenhum lançamento ainda.';
+    if (dados.length === 0) return 'Nenhum lançamento.';
     const ult = dados.slice(-10).reverse();
-    let texto = '📋 ÚLTIMOS 10 LANÇAMENTOS\n(ID | data | tipo | valor | categoria)\n\n';
-    ult.forEach((item, idx) => {
-        const id = dados.length - 10 + idx + 1;
+    let texto = '📋 ÚLTIMOS 10\n(ID | data | tipo | valor | cat)\n\n';
+    ult.forEach((item, i) => {
+        const id = dados.length - 10 + i + 1;
         const tipo = item.tipo === 'entrada' ? 'VENDA' : 'GASTO';
-        texto += `${id.toString().padStart(3)} | ${formatData(item.data)} | ${tipo} | ${item.valor.toFixed(2)} | ${item.categoria}\n`;
+        texto += `${id} | ${formatData(item.data)} | ${tipo} | ${item.valor.toFixed(2)} | ${item.categoria}\n`;
     });
-    texto += '\nUse o ID para editar: editar ID novo_valor [nova_categoria] [nova_data]';
+    texto += '\nEditar: editar ID novo_valor [cat] [data]';
     return texto;
 }
 
-// ==================== WHATSAPP CLIENT ====================
+// ==================== CLIENT ====================
 const client = new Client({
     authStrategy: new LocalAuth(),
     puppeteer: { headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu'] }
 });
 
 client.on('qr', qr => {
-    console.log('📱 Escaneie o QR Code abaixo:');
+    console.log('QR CODE:');
     qrcode.generate(qr, { small: true });
 });
 
-client.on('ready', () => {
-    console.log('✅ WhatsApp conectado com sucesso!');
-});
+client.on('ready', () => console.log('✅ Conectado!'));
 
 client.on('message_create', async msg => {
-    // Log de debug para ver exatamente o que chega
-    console.log('Mensagem recebida:', {
+    console.log('Mensagem recebida →', {
         body: msg.body,
         from: msg.from,
         fromMe: msg.fromMe,
         isGroup: msg.from.includes('@g.us')
     });
 
-    // Removido temporariamente a restrição !fromMe para testes
+    // Temporariamente removida restrição para testes
     // if (!msg.fromMe || msg.from.includes('@g.us')) return;
 
     try {
         const texto = (msg.body || '').trim();
-        const lower = texto.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''); // remove acentos
-
         if (!texto) return;
 
-        console.log('Comando processado (lower):', lower);
+        const cmd = texto.toLowerCase()
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .replace(/\s+/g, ' ')
+            .trim();
+
+        console.log('Comando normalizado:', cmd);
 
         // Comandos tolerantes
-        if (lower.includes('saldo')) {
-            return msg.reply(`💰 Saldo atual: R$ ${saldoTotal().toFixed(2)}`);
+        if (cmd.includes('saldo')) {
+            return msg.reply(`💰 Saldo: R$ ${saldoTotal().toFixed(2)}`);
         }
 
-        if (lower.includes('hoje')) {
+        if (cmd.includes('hoje')) {
             return msg.reply(resumoHoje());
         }
 
-        if (lower.includes('relatorio') || lower.includes('relatório')) {
+        if (cmd.includes('relatorio') || cmd.includes('relatório')) {
             return msg.reply(resumoMes());
         }
 
-        if (lower.includes('categorias')) {
+        if (cmd.includes('categorias')) {
             return msg.reply(resumoCategoriasMes());
         }
 
-        if (lower.includes('grafico') || lower.includes('gráfico')) {
+        if (cmd.includes('grafico') || cmd.includes('gráfico')) {
             return msg.reply(graficoCategoriasMes());
         }
 
-        if (lower.includes('ultimos') || lower.includes('últimos')) {
+        if (cmd.includes('ultimos') || cmd.includes('últimos')) {
             return msg.reply(ultimosLancamentos());
         }
 
-        if (lower.includes('ajuda') || lower.includes('help')) {
-            return msg.reply(`📋 COMANDOS DO BOT
+        if (cmd.includes('ajuda') || cmd.includes('help')) {
+            return msg.reply(`📋 COMANDOS
 
-💰 saldo
-📅 hoje
-📊 relatorio  (mês atual)
-📂 categorias
-📊 grafico
-📋 ultimos
+• saldo
+• hoje
+• relatorio
+• categorias
+• grafico
+• ultimos
+• ajuda
 
-✅ Registrar
+Registrar:
 venda 350
-venda 350 18/03
-gasto 45 uber
-despesa 1200 aluguel 15/03
+gasto 80 uber 15/03
 
-🛠️ editar ID novo_valor [categoria] [data]
-
-Digite qualquer comando acima.`);
+Editar:
+editar 3 500 luz 20/03`);
         }
 
-        // Aqui você pode adicionar novamente os comandos de lançamento (venda, gasto, editar)
-        // por enquanto deixei comentado para isolar o problema
-
-        // Se nenhum comando bater → resposta padrão
-        msg.reply('Comando não reconhecido.\nDigite "ajuda" para ver os comandos disponíveis.');
+        // Resposta padrão se nenhum comando bater
+        msg.reply('Não entendi o comando.\nDigite "ajuda" para ver as opções.');
 
     } catch (err) {
-        console.error('Erro no processamento:', err);
-        msg.reply('❌ Ocorreu um erro interno. Tente novamente.');
+        console.error('Erro:', err.message);
+        msg.reply('❌ Erro interno. Tente novamente.');
     }
 });
 
 cron.schedule('*/14 * * * *', () => http.get('http://localhost:3000/ping', () => {}).on('error', () => {}));
 client.initialize();
-console.log('🚀 Bot financeiro iniciado!');
+console.log('🚀 Iniciado!');
