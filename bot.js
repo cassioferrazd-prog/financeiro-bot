@@ -1,6 +1,6 @@
 // =============================================
-// BOT FINANCEIRO WHATSAPP - VERSÃO CORRIGIDA (sem repetições)
-// Debug + comandos tolerantes + testes facilitados
+// BOT FINANCEIRO WHATSAPP - VERSÃO FINAL CORRIGIDA
+// Anti-loop + comandos tolerantes + debug
 // Railway - março 2026
 // =============================================
 
@@ -22,7 +22,7 @@ if (!fs.existsSync(arquivo)) fs.writeFileSync(arquivo, JSON.stringify([]));
 function carregarDados() { return JSON.parse(fs.readFileSync(arquivo, 'utf8')); }
 function salvarDados(dados) { fs.writeFileSync(arquivo, JSON.stringify(dados, null, 2)); }
 
-// ==================== FUNÇÕES DE DATA ====================
+// ==================== DATA ====================
 function parseData(dataStr) {
     if (!dataStr) return new Date().toISOString();
     const hoje = new Date();
@@ -64,8 +64,7 @@ function resumoMes() {
             if (item.tipo === 'saida') saida += item.valor;
         }
     });
-    const saldo = entrada - saida;
-    return `📊 RELATÓRIO DO MÊS (${mesAtual})\n\n💰 Entradas: R$ ${entrada.toFixed(2)}\n💸 Saídas: R$ ${saida.toFixed(2)}\n📈 Saldo: R$ ${saldo.toFixed(2)}`;
+    return `📊 RELATÓRIO DO MÊS (${mesAtual})\n\n💰 Entradas: R$ ${entrada.toFixed(2)}\n💸 Saídas: R$ ${saida.toFixed(2)}\n📈 Saldo: R$ ${(entrada - saida).toFixed(2)}`;
 }
 
 function resumoHoje() {
@@ -78,8 +77,7 @@ function resumoHoje() {
             if (item.tipo === 'saida') saida += item.valor;
         }
     });
-    const saldo = entrada - saida;
-    return `📅 HOJE (${hoje})\n\n💰 Entradas: R$ ${entrada.toFixed(2)}\n💸 Saídas: R$ ${saida.toFixed(2)}\n📈 Resultado: R$ ${saldo.toFixed(2)}`;
+    return `📅 HOJE (${hoje})\n\n💰 Entradas: R$ ${entrada.toFixed(2)}\n💸 Saídas: R$ ${saida.toFixed(2)}\n📈 Resultado: R$ ${(entrada - saida).toFixed(2)}`;
 }
 
 function resumoCategoriasMes() {
@@ -94,9 +92,7 @@ function resumoCategoriasMes() {
     const nomes = Object.keys(categorias);
     if (nomes.length === 0) return 'Nenhuma despesa este mês.';
     let texto = '📂 CATEGORIAS DO MÊS\n';
-    nomes.sort().forEach(nome => {
-        texto += `\n• ${nome}: R$ ${categorias[nome].toFixed(2)}`;
-    });
+    nomes.sort().forEach(nome => texto += `\n• ${nome}: R$ ${categorias[nome].toFixed(2)}`);
     return texto;
 }
 
@@ -152,6 +148,7 @@ client.on('qr', qr => {
 client.on('ready', () => console.log('✅ Conectado!'));
 
 client.on('message_create', async msg => {
+    // Log de debug
     console.log('Mensagem recebida →', {
         body: msg.body,
         from: msg.from,
@@ -159,8 +156,18 @@ client.on('message_create', async msg => {
         isGroup: msg.from.includes('@g.us')
     });
 
-    // Temporariamente removida restrição para testes
-    // if (!msg.fromMe || msg.from.includes('@g.us')) return;
+    // ANTI-LOOP: Ignora mensagens enviadas pelo próprio bot
+    if (msg.fromMe) {
+        const body = msg.body || '';
+        if (body.startsWith('💰') || body.startsWith('📊') || body.startsWith('📅') || 
+            body.startsWith('📋') || body.startsWith('📂') || body.includes('Comando não reconhecido')) {
+            console.log('IGNORADO: Mensagem enviada pelo próprio bot (anti-loop)');
+            return;
+        }
+    }
+
+    // Ignora grupos
+    if (msg.from.includes('@g.us')) return;
 
     try {
         const texto = (msg.body || '').trim();
@@ -174,7 +181,7 @@ client.on('message_create', async msg => {
 
         console.log('Comando normalizado:', cmd);
 
-        // Comandos tolerantes
+        // Comandos
         if (cmd.includes('saldo')) {
             return msg.reply(`💰 Saldo: R$ ${saldoTotal().toFixed(2)}`);
         }
@@ -200,7 +207,7 @@ client.on('message_create', async msg => {
         }
 
         if (cmd.includes('ajuda') || cmd.includes('help')) {
-            return msg.reply(`📋 COMANDOS
+            return msg.reply(`📋 COMANDOS DISPONÍVEIS
 
 • saldo
 • hoje
@@ -210,15 +217,15 @@ client.on('message_create', async msg => {
 • ultimos
 • ajuda
 
-Registrar:
+Registrar exemplo:
 venda 350
 gasto 80 uber 15/03
 
-Editar:
+Editar exemplo:
 editar 3 500 luz 20/03`);
         }
 
-        // Resposta padrão se nenhum comando bater
+        // Resposta padrão
         msg.reply('Não entendi o comando.\nDigite "ajuda" para ver as opções.');
 
     } catch (err) {
