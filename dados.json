@@ -110,5 +110,19 @@
     "valor": 230,
     "descricao": "gastei 230",
     "categoria": "Outros"
+  },
+  {
+    "data": "2026-03-19T00:37:08.544Z",
+    "tipo": "entrada",
+    "valor": 400,
+    "descricao": "vendi 400",
+    "categoria": "Receita"
+  },
+  {
+    "data": "2026-03-19T00:37:25.252Z",
+    "tipo": "saida",
+    "valor": 300,
+    "descricao": "gastei 300",
+    "categoria": "Outros"
   }
 ]
