@@ -28,6 +28,7 @@ function detectarCategoria(tipoComando, descricao) {
     const d = normalizarTexto(descricao);
 
     if (tipoComando === 'venda') return 'venda';
+
     if (tipoComando === 'compra') {
         if (d.includes('fornecedor')) return 'fornecedor';
         if (d.includes('estoque')) return 'estoque';
