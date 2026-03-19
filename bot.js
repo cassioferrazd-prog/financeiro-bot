@@ -1,6 +1,7 @@
 // =============================================
-// 📊 BOT FINANCEIRO WHATSAPP - VERSÃO CORRIGIDA
-// Railway compatível - março 2026
+// 📊 BOT FINANCEIRO WHATSAPP - VERSÃO MELHORADA
+// Lançamentos diários com data automática + manual
+// Railway - março 2026
 // =============================================
 
 const { Client, LocalAuth } = require('whatsapp-web.js');
@@ -11,35 +12,41 @@ const cron = require('node-cron');
 const http = require('http');
 
 const app = express();
-
-// ==================== SERVIDOR HTTP (opcional para ping) ====================
 app.get('/', (req, res) => res.send('🤖 Bot financeiro rodando!'));
 app.get('/ping', (req, res) => res.status(200).send('pong ' + new Date().toISOString()));
+app.listen(3000, '0.0.0.0', () => console.log('🌐 Servidor HTTP ativo na porta 3000'));
 
-app.listen(3000, '0.0.0.0', () => {
-    console.log('🌐 Servidor HTTP ativo na porta 3000');
-});
-
-// ==================== ARQUIVO DE DADOS ====================
 const arquivo = 'dados.json';
+if (!fs.existsSync(arquivo)) fs.writeFileSync(arquivo, JSON.stringify([]));
 
-if (!fs.existsSync(arquivo)) {
-    fs.writeFileSync(arquivo, JSON.stringify([]));
+function carregarDados() { return JSON.parse(fs.readFileSync(arquivo, 'utf8')); }
+function salvarDados(dados) { fs.writeFileSync(arquivo, JSON.stringify(dados, null, 2)); }
+
+// ==================== FUNÇÃO PARA TRATAR DATA ====================
+function parseData(dataStr) {
+    if (!dataStr) return new Date().toISOString(); // data automática = hoje
+
+    const hoje = new Date();
+    const anoAtual = hoje.getFullYear();
+
+    // Formato 1: YYYY-MM-DD
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dataStr)) return new Date(dataStr).toISOString();
+
+    // Formato 2: DD/MM/AAAA ou DD/MM
+    const partes = dataStr.split('/');
+    if (partes.length === 3) {
+        const [dia, mes, ano] = partes.map(Number);
+        return new Date(ano, mes-1, dia).toISOString();
+    }
+    if (partes.length === 2) {
+        const [dia, mes] = partes.map(Number);
+        return new Date(anoAtual, mes-1, dia).toISOString();
+    }
+
+    return null; // data inválida
 }
 
-function carregarDados() {
-    return JSON.parse(fs.readFileSync(arquivo, 'utf8'));
-}
-
-function salvarDados(dados) {
-    fs.writeFileSync(arquivo, JSON.stringify(dados, null, 2));
-}
-
-// ==================== FUNÇÕES ÚTEIS ====================
-function hoje() {
-    return new Date().toISOString().slice(0, 10);
-}
-
+// ==================== FUNÇÕES DE RELATÓRIO ====================
 function saldoTotal() {
     const dados = carregarDados();
     let saldo = 0;
@@ -50,230 +57,161 @@ function saldoTotal() {
     return saldo;
 }
 
-function resumoMes() {
+function resumoMes() { /* mesma função anterior */ 
     const dados = carregarDados();
     const mesAtual = new Date().toISOString().slice(0, 7);
-
-    let entrada = 0;
-    let saida = 0;
-
+    let entrada = 0, saida = 0;
     for (const item of dados) {
         if (item.data.startsWith(mesAtual)) {
             if (item.tipo === 'entrada') entrada += item.valor;
             if (item.tipo === 'saida') saida += item.valor;
         }
     }
-
     const saldo = entrada - saida;
-    return `📊 RELATÓRIO DO MÊS (${mesAtual})
-
-💰 Entradas: R$ ${entrada.toFixed(2)}
-💸 Saídas:   R$ ${saida.toFixed(2)}
-📈 Saldo:     R$ ${saldo.toFixed(2)}`;
+    return `📊 RELATÓRIO DO MÊS (${mesAtual})\n\n💰 Entradas: R$ ${entrada.toFixed(2)}\n💸 Saídas: R$ ${saida.toFixed(2)}\n📈 Saldo: R$ ${saldo.toFixed(2)}`;
 }
 
-function resumoHoje() {
+function resumoHoje() { /* mesma função anterior */ 
     const dados = carregarDados();
-    const dataHoje = hoje();
-
-    let entrada = 0;
-    let saida = 0;
-
+    const hoje = new Date().toISOString().slice(0, 10);
+    let entrada = 0, saida = 0;
     for (const item of dados) {
-        if (item.data.startsWith(dataHoje)) {
+        if (item.data.startsWith(hoje)) {
             if (item.tipo === 'entrada') entrada += item.valor;
             if (item.tipo === 'saida') saida += item.valor;
         }
     }
-
     const saldo = entrada - saida;
-    return `📅 HOJE (${dataHoje})
-
-💰 Entradas: R$ ${entrada.toFixed(2)}
-💸 Saídas:   R$ ${saida.toFixed(2)}
-📈 Resultado: R$ ${saldo.toFixed(2)}`;
+    return `📅 HOJE (${hoje})\n\n💰 Entradas: R$ ${entrada.toFixed(2)}\n💸 Saídas: R$ ${saida.toFixed(2)}\n📈 Resultado: R$ ${saldo.toFixed(2)}`;
 }
 
-function resumoCategoriasMes() {
+function resumoCategoriasMes() { /* mesma função anterior */ 
     const dados = carregarDados();
     const mesAtual = new Date().toISOString().slice(0, 7);
     const categorias = {};
-
     for (const item of dados) {
         if (item.data.startsWith(mesAtual) && item.tipo === 'saida') {
-            if (!categorias[item.categoria]) categorias[item.categoria] = 0;
-            categorias[item.categoria] += item.valor;
+            categorias[item.categoria] = (categorias[item.categoria] || 0) + item.valor;
         }
     }
-
     const nomes = Object.keys(categorias);
     if (nomes.length === 0) return 'Nenhuma despesa registrada este mês.';
-
     let texto = '📂 CATEGORIAS DO MÊS\n';
-
     for (const nome of nomes.sort()) {
-        texto += `\n• ${nome}: R$ ${categorias[nome].toFixed(2)}`;  // corrigido: backticks
+        texto += `\n• ${nome}: R$ ${categorias[nome].toFixed(2)}`;
     }
-
     return texto;
 }
 
-// ==================== WHATSAPP CLIENT ====================
+function ultimosLancamentos() {
+    const dados = carregarDados();
+    if (dados.length === 0) return 'Nenhum lançamento ainda.';
+    const ultimos = dados.slice(-10).reverse();
+    let texto = '📋 ÚLTIMOS 10 LANÇAMENTOS\n\n';
+    for (const item of ultimos) {
+        const data = item.data.slice(0,10);
+        const tipo = item.tipo === 'entrada' ? '✅ VENDA' : '❌ GASTO';
+        texto += `${data} | ${tipo} | R$ ${item.valor.toFixed(2)} | ${item.categoria}\n`;
+    }
+    return texto;
+}
+
+// ==================== CLIENT WHATSAPP ====================
 const client = new Client({
     authStrategy: new LocalAuth(),
-    puppeteer: {
-        headless: true,
-        args: [
-            '--no-sandbox',
-            '--disable-setuid-sandbox',
-            '--disable-dev-shm-usage',
-            '--disable-gpu'
-        ]
-    }
+    puppeteer: { headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu'] }
 });
 
-client.on('qr', qr => {
-    console.log('📱 Escaneie o QR Code abaixo:');
-    qrcode.generate(qr, { small: true });
-});
+client.on('qr', qr => { console.log('📱 Escaneie o QR Code abaixo:'); qrcode.generate(qr, { small: true }); });
+client.on('ready', () => console.log('✅ WhatsApp conectado com sucesso!'));
 
-client.on('ready', () => {
-    console.log('✅ WhatsApp conectado com sucesso!');
-});
-
-// ==================== PROCESSAMENTO DE COMANDOS ====================
 client.on('message_create', async msg => {
-    if (!msg.fromMe) return;
-    if (msg.from.includes('@g.us')) return;
+    if (!msg.fromMe || msg.from.includes('@g.us')) return;
 
     try {
         const texto = msg.body.toLowerCase().trim();
-        if (!texto) return;
-
         const partes = texto.split(/\s+/);
         const comando = partes[0];
 
-        // Comandos de consulta
-        if (texto === 'saldo') {
-            msg.reply(`💰 Saldo atual: R$ ${saldoTotal().toFixed(2)}`);
-            return;
-        }
+        // ===================== CONSULTAS =====================
+        if (texto === 'saldo') return msg.reply(`💰 Saldo atual: R$ ${saldoTotal().toFixed(2)}`);
+        if (['relatorio', 'relatório'].includes(texto)) return msg.reply(resumoMes());
+        if (texto === 'hoje') return msg.reply(resumoHoje());
+        if (texto === 'categorias') return msg.reply(resumoCategoriasMes());
+        if (texto === 'ultimos') return msg.reply(ultimosLancamentos());
 
-        if (texto === 'relatorio' || texto === 'relatório') {
-            msg.reply(resumoMes());
-            return;
-        }
+        if (['ajuda', 'help'].includes(texto)) {
+            return msg.reply(`📋 *COMANDOS DO BOT FINANCEIRO*
 
-        if (texto === 'hoje') {
-            msg.reply(resumoHoje());
-            return;
-        }
+💰 saldo
+📊 relatorio
+📅 hoje
+📂 categorias
+📋 ultimos
 
-        if (texto === 'categorias') {
-            msg.reply(resumoCategoriasMes());
-            return;
-        }
-
-        if (texto === 'ajuda' || texto === 'help') {
-            msg.reply(`📋 *COMANDOS DO BOT FINANCEIRO*
-
-💰 *saldo*
-📊 *relatorio*
-📅 *hoje*
-📂 *categorias*
-
-✅ *Registrar entrada*
+✅ Vendas (data automática ou manual)
 venda 350
+venda 350 18/03/2026
+venda 350 2026-03-18
 
-✅ *Registrar saída*
-compra 700 mercadoria
-despesa 1200 aluguel
-gasto 40 gasolina
+✅ Gastos
+gasto 45 cafe
+gasto 120 aluguel 15/03
+despesa 700 mercadoria 2026-03-18
 
-🛠️ *Extra*
-!limpar → zera todos os dados (cuidado!)
+🛠️ !limpar (zera tudo)
 
-Digite *ajuda* a qualquer momento.`);
-            return;
+Digite ajuda a qualquer momento.`);
         }
 
-        // Limpar dados
-        if (texto === '!limpar') {
-            fs.writeFileSync(arquivo, '[]');
-            msg.reply('🗑️ *Todos os registros foram apagados!*');
-            return;
+        // ===================== LANÇAMENTOS =====================
+        const valorStr = partes[1];
+        const valor = parseFloat(valorStr?.replace(',', '.'));
+        if (isNaN(valor) || valor <= 0) {
+            if (['venda','compra','despesa','gasto'].includes(comando)) {
+                return msg.reply('❌ Valor inválido! Exemplo: venda 350');
+            }
         }
 
-        // Registrar venda
+        let dataLancamento = null;
+        let categoria = '';
+
+        // Pega a data se o último argumento for uma data válida
+        const possivelData = partes[partes.length - 1];
+        if (/^\d{1,2}\/\d{1,2}(\/\d{4})?$|^\d{4}-\d{2}-\d{2}$/.test(possivelData)) {
+            dataLancamento = parseData(possivelData);
+            if (!dataLancamento) return msg.reply('❌ Data inválida! Use DD/MM, DD/MM/AAAA ou AAAA-MM-DD');
+            
+            // O resto é categoria (se houver)
+            categoria = partes.slice(2, -1).join(' ') || 'outros';
+        } else {
+            dataLancamento = new Date().toISOString();
+            categoria = partes.slice(2).join(' ') || 'outros';
+        }
+
+        const dados = carregarDados();
+
         if (comando === 'venda') {
-            if (partes.length < 2) {
-                msg.reply('❌ Uso: *venda 350* ou *venda 350,50*');
-                return;
-            }
-            const valor = parseFloat(partes[1].replace(',', '.'));
-            if (isNaN(valor) || valor <= 0) {
-                msg.reply('❌ Valor inválido! Exemplo: venda 350,50');
-                return;
-            }
-
-            const dados = carregarDados();
-            dados.push({
-                tipo: 'entrada',
-                categoria: 'venda',
-                valor: valor,
-                data: new Date().toISOString()
-            });
+            dados.push({ tipo: 'entrada', categoria: 'venda', valor, data: dataLancamento });
             salvarDados(dados);
-
-            msg.reply(`✅ *Venda registrada!*\n💰 R$ ${valor.toFixed(2)}`);
-            return;
+            const dataFormatada = dataLancamento.slice(0,10);
+            return msg.reply(`✅ Venda registrada!\n💰 R$ ${valor.toFixed(2)} • ${dataFormatada}`);
         }
 
-        // Registrar saída
         if (['compra', 'despesa', 'gasto'].includes(comando)) {
-            if (partes.length < 2) {
-                msg.reply(`❌ Uso: *${comando} 150,00 [categoria opcional]*`);
-                return;
-            }
-            const valor = parseFloat(partes[1].replace(',', '.'));
-            if (isNaN(valor) || valor <= 0) {
-                msg.reply('❌ Valor inválido!');
-                return;
-            }
-
-            const categoria = partes.slice(2).join(' ') ||
-                              (comando === 'gasto' ? 'outros' : comando);
-
-            const dados = carregarDados();
-            dados.push({
-                tipo: 'saida',
-                categoria: categoria,
-                valor: valor,
-                data: new Date().toISOString()
-            });
+            dados.push({ tipo: 'saida', categoria, valor, data: dataLancamento });
             salvarDados(dados);
-
-            const nomeComando = comando.charAt(0).toUpperCase() + comando.slice(1);
-            msg.reply(`✅ *${nomeComando} registrada!*\n💸 R$ ${valor.toFixed(2)} • ${categoria}`);
-            return;
+            const dataFormatada = dataLancamento.slice(0,10);
+            const nome = comando.charAt(0).toUpperCase() + comando.slice(1);
+            return msg.reply(`✅ ${nome} registrado!\n💸 R$ ${valor.toFixed(2)} • ${categoria} • ${dataFormatada}`);
         }
 
     } catch (err) {
-        console.error('Erro ao processar comando:', err);
-        msg.reply('❌ Ocorreu um erro interno. Tente novamente.');
+        console.error(err);
+        msg.reply('❌ Erro interno. Tente novamente.');
     }
 });
 
-// ==================== SELF-PING (opcional) ====================
-cron.schedule('*/14 * * * *', () => {
-    http.get('http://localhost:3000/ping', () => {
-        // console.log('Self-ping OK');
-    }).on('error', (err) => {
-        console.error('Self-ping falhou:', err.message);
-    });
-});
-
-// ==================== INICIALIZAÇÃO ====================
+cron.schedule('*/14 * * * *', () => http.get('http://localhost:3000/ping', () => {}).on('error', () => {}));
 client.initialize();
-
-console.log('🚀 Bot financeiro iniciado! Aguarde o QR Code...');
+console.log('🚀 Bot financeiro iniciado!');
