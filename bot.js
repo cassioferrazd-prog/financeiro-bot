@@ -1,6 +1,6 @@
 // =============================================
-// 📊 BOT FINANCEIRO WHATSAPP - VERSÃO MELHORADA
-// Lançamentos diários com data automática + manual
+// BOT FINANCEIRO WHATSAPP - VERSÃO COMPLETA E ATUALIZADA
+// Lançamentos com data auto/manual, editar, grafico ASCII, relatorio periodo
 // Railway - março 2026
 // =============================================
 
@@ -22,42 +22,39 @@ if (!fs.existsSync(arquivo)) fs.writeFileSync(arquivo, JSON.stringify([]));
 function carregarDados() { return JSON.parse(fs.readFileSync(arquivo, 'utf8')); }
 function salvarDados(dados) { fs.writeFileSync(arquivo, JSON.stringify(dados, null, 2)); }
 
-// ==================== FUNÇÃO PARA TRATAR DATA ====================
+// ==================== MANIPULAÇÃO DE DATA ====================
 function parseData(dataStr) {
-    if (!dataStr) return new Date().toISOString(); // data automática = hoje
-
+    if (!dataStr) return new Date().toISOString();
     const hoje = new Date();
     const anoAtual = hoje.getFullYear();
 
-    // Formato 1: YYYY-MM-DD
     if (/^\d{4}-\d{2}-\d{2}$/.test(dataStr)) return new Date(dataStr).toISOString();
 
-    // Formato 2: DD/MM/AAAA ou DD/MM
     const partes = dataStr.split('/');
     if (partes.length === 3) {
-        const [dia, mes, ano] = partes.map(Number);
-        return new Date(ano, mes-1, dia).toISOString();
+        const [d, m, a] = partes.map(Number);
+        return new Date(a, m - 1, d).toISOString();
     }
     if (partes.length === 2) {
-        const [dia, mes] = partes.map(Number);
-        return new Date(anoAtual, mes-1, dia).toISOString();
+        const [d, m] = partes.map(Number);
+        return new Date(anoAtual, m - 1, d).toISOString();
     }
+    return null;
+}
 
-    return null; // data inválida
+function formatData(iso) {
+    if (!iso) return 'sem data';
+    const d = new Date(iso);
+    return d.toISOString().slice(0, 10).split('-').reverse().join('/');
 }
 
 // ==================== FUNÇÕES DE RELATÓRIO ====================
 function saldoTotal() {
     const dados = carregarDados();
-    let saldo = 0;
-    for (const item of dados) {
-        if (item.tipo === 'entrada') saldo += item.valor;
-        if (item.tipo === 'saida') saldo -= item.valor;
-    }
-    return saldo;
+    return dados.reduce((acc, item) => acc + (item.tipo === 'entrada' ? item.valor : -item.valor), 0);
 }
 
-function resumoMes() { /* mesma função anterior */ 
+function resumoMes() {
     const dados = carregarDados();
     const mesAtual = new Date().toISOString().slice(0, 7);
     let entrada = 0, saida = 0;
@@ -71,7 +68,7 @@ function resumoMes() { /* mesma função anterior */
     return `📊 RELATÓRIO DO MÊS (${mesAtual})\n\n💰 Entradas: R$ ${entrada.toFixed(2)}\n💸 Saídas: R$ ${saida.toFixed(2)}\n📈 Saldo: R$ ${saldo.toFixed(2)}`;
 }
 
-function resumoHoje() { /* mesma função anterior */ 
+function resumoHoje() {
     const dados = carregarDados();
     const hoje = new Date().toISOString().slice(0, 10);
     let entrada = 0, saida = 0;
@@ -85,7 +82,7 @@ function resumoHoje() { /* mesma função anterior */
     return `📅 HOJE (${hoje})\n\n💰 Entradas: R$ ${entrada.toFixed(2)}\n💸 Saídas: R$ ${saida.toFixed(2)}\n📈 Resultado: R$ ${saldo.toFixed(2)}`;
 }
 
-function resumoCategoriasMes() { /* mesma função anterior */ 
+function resumoCategoriasMes() {
     const dados = carregarDados();
     const mesAtual = new Date().toISOString().slice(0, 7);
     const categorias = {};
@@ -103,112 +100,208 @@ function resumoCategoriasMes() { /* mesma função anterior */
     return texto;
 }
 
-function ultimosLancamentos() {
+function resumoPeriodo(inicioStr, fimStr) {
+    const inicio = parseData(inicioStr);
+    const fim = parseData(fimStr);
+    if (!inicio || !fim || inicio > fim) return 'Datas inválidas ou início maior que fim.';
+
     const dados = carregarDados();
-    if (dados.length === 0) return 'Nenhum lançamento ainda.';
-    const ultimos = dados.slice(-10).reverse();
-    let texto = '📋 ÚLTIMOS 10 LANÇAMENTOS\n\n';
-    for (const item of ultimos) {
-        const data = item.data.slice(0,10);
-        const tipo = item.tipo === 'entrada' ? '✅ VENDA' : '❌ GASTO';
-        texto += `${data} | ${tipo} | R$ ${item.valor.toFixed(2)} | ${item.categoria}\n`;
+    let entrada = 0, saida = 0;
+    for (const item of dados) {
+        if (item.data >= inicio && item.data <= fim) {
+            if (item.tipo === 'entrada') entrada += item.valor;
+            if (item.tipo === 'saida') saida += item.valor;
+        }
     }
+    const saldo = entrada - saida;
+    return `📊 RELATÓRIO PERÍODO (${formatData(inicio)} a ${formatData(fim)})\n\n💰 Entradas: R$ ${entrada.toFixed(2)}\n💸 Saídas: R$ ${saida.toFixed(2)}\n📈 Saldo: R$ ${saldo.toFixed(2)}`;
+}
+
+function graficoCategoriasMes() {
+    const dados = carregarDados();
+    const mesAtual = new Date().toISOString().slice(0, 7);
+    const cat = {};
+    let totalSaida = 0;
+
+    for (const item of dados) {
+        if (item.data.startsWith(mesAtual) && item.tipo === 'saida') {
+            cat[item.categoria] = (cat[item.categoria] || 0) + item.valor;
+            totalSaida += item.valor;
+        }
+    }
+
+    if (totalSaida === 0) return 'Sem despesas no mês para gráfico.';
+
+    const maxBar = 20;
+    let texto = '📊 GRAFICO GASTOS DO MÊS (ASCII)\n\n';
+    Object.entries(cat)
+        .sort((a, b) => b[1] - a[1])
+        .forEach(([catNome, val]) => {
+            const percent = val / totalSaida;
+            const barLength = Math.round(percent * maxBar);
+            const bar = '█'.repeat(barLength) + ' '.repeat(maxBar - barLength);
+            texto += `${catNome.padEnd(15)} | ${bar} R$ ${val.toFixed(2)} (${(percent * 100).toFixed(0)}%)\n`;
+        });
+    texto += `\nTotal saídas: R$ ${totalSaida.toFixed(2)}`;
     return texto;
 }
 
-// ==================== CLIENT WHATSAPP ====================
+function ultimosLancamentos() {
+    const dados = carregarDados();
+    if (dados.length === 0) return 'Nenhum lançamento ainda.';
+    const ult = dados.slice(-10).reverse();
+    let texto = '📋 ÚLTIMOS 10 LANÇAMENTOS\n(ID | data | tipo | valor | categoria)\n\n';
+    ult.forEach((item, idx) => {
+        const id = dados.length - 10 + idx + 1;
+        const tipo = item.tipo === 'entrada' ? 'VENDA' : 'GASTO';
+        texto += `${id.toString().padStart(3)} | ${formatData(item.data)} | ${tipo} | ${item.valor.toFixed(2)} | ${item.categoria}\n`;
+    });
+    texto += '\nUse o ID para editar: editar ID novo_valor [nova_categoria] [nova_data]';
+    return texto;
+}
+
+// ==================== WHATSAPP CLIENT ====================
 const client = new Client({
     authStrategy: new LocalAuth(),
     puppeteer: { headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu'] }
 });
 
-client.on('qr', qr => { console.log('📱 Escaneie o QR Code abaixo:'); qrcode.generate(qr, { small: true }); });
-client.on('ready', () => console.log('✅ WhatsApp conectado com sucesso!'));
+client.on('qr', qr => {
+    console.log('📱 Escaneie o QR Code abaixo:');
+    qrcode.generate(qr, { small: true });
+});
+
+client.on('ready', () => {
+    console.log('✅ WhatsApp conectado com sucesso!');
+});
 
 client.on('message_create', async msg => {
     if (!msg.fromMe || msg.from.includes('@g.us')) return;
 
     try {
-        const texto = msg.body.toLowerCase().trim();
-        const partes = texto.split(/\s+/);
+        const texto = msg.body.trim();
+        const lower = texto.toLowerCase();
+        const partes = lower.split(/\s+/);
         const comando = partes[0];
 
-        // ===================== CONSULTAS =====================
-        if (texto === 'saldo') return msg.reply(`💰 Saldo atual: R$ ${saldoTotal().toFixed(2)}`);
-        if (['relatorio', 'relatório'].includes(texto)) return msg.reply(resumoMes());
-        if (texto === 'hoje') return msg.reply(resumoHoje());
-        if (texto === 'categorias') return msg.reply(resumoCategoriasMes());
-        if (texto === 'ultimos') return msg.reply(ultimosLancamentos());
+        // ===================== COMANDOS DE CONSULTA =====================
+        if (lower === 'saldo') return msg.reply(`💰 Saldo atual: R$ ${saldoTotal().toFixed(2)}`);
+        if (lower === 'hoje') return msg.reply(resumoHoje());
+        if (['relatorio', 'relatório'].includes(comando)) {
+            if (partes.length === 1) return msg.reply(resumoMes());
+            if (partes.length === 3) return msg.reply(resumoPeriodo(partes[1], partes[2]));
+            return msg.reply('Uso: relatorio [inicio] [fim]  ou apenas relatorio (mês atual)');
+        }
+        if (lower === 'categorias') return msg.reply(resumoCategoriasMes());
+        if (lower === 'grafico') return msg.reply(graficoCategoriasMes());
+        if (lower === 'ultimos') return msg.reply(ultimosLancamentos());
 
-        if (['ajuda', 'help'].includes(texto)) {
-            return msg.reply(`📋 *COMANDOS DO BOT FINANCEIRO*
+        if (['ajuda', 'help'].includes(lower)) {
+            return msg.reply(`📋 COMANDOS DO BOT
 
 💰 saldo
-📊 relatorio
 📅 hoje
+📊 relatorio  (mês) ou relatorio DD/MM/AAAA DD/MM/AAAA
 📂 categorias
+📊 grafico
 📋 ultimos
 
-✅ Vendas (data automática ou manual)
+✅ Registrar
 venda 350
 venda 350 18/03/2026
-venda 350 2026-03-18
+gasto 45 uber
+despesa 1200 aluguel 15/03
 
-✅ Gastos
-gasto 45 cafe
-gasto 120 aluguel 15/03
-despesa 700 mercadoria 2026-03-18
-
-🛠️ !limpar (zera tudo)
+🛠️ editar ID novo_valor [nova_categoria] [nova_data]
+Ex: editar 5 450 transporte 20/03
 
 Digite ajuda a qualquer momento.`);
         }
 
-        // ===================== LANÇAMENTOS =====================
-        const valorStr = partes[1];
-        const valor = parseFloat(valorStr?.replace(',', '.'));
-        if (isNaN(valor) || valor <= 0) {
-            if (['venda','compra','despesa','gasto'].includes(comando)) {
-                return msg.reply('❌ Valor inválido! Exemplo: venda 350');
+        // ===================== EDITAR LANÇAMENTO =====================
+        if (comando === 'editar') {
+            const [, idStr, novoValorStr, ...resto] = partes;
+            const id = parseInt(idStr);
+            const novoValor = parseFloat(novoValorStr?.replace(',', '.'));
+            if (isNaN(id) || isNaN(novoValor) || novoValor <= 0) {
+                return msg.reply('Uso: editar ID novo_valor [nova_categoria] [nova_data]\nEx: editar 3 1200 aluguel 20/03');
             }
+
+            const dados = carregarDados();
+            if (id < 1 || id > dados.length) return msg.reply('ID inválido. Veja com ultimos');
+
+            const item = dados[id - 1];
+            item.valor = novoValor;
+
+            if (resto.length > 0) {
+                const possData = resto[resto.length - 1];
+                const parsedData = parseData(possData);
+                if (parsedData) {
+                    item.data = parsedData;
+                    resto.pop();
+                }
+                if (resto.length > 0) item.categoria = resto.join(' ');
+            }
+
+            salvarDados(dados);
+            return msg.reply(`✅ Lançamento #${id} atualizado!\nValor: R$ ${novoValor.toFixed(2)}\nCategoria: ${item.categoria}\nData: ${formatData(item.data)}`);
         }
 
-        let dataLancamento = null;
-        let categoria = '';
-
-        // Pega a data se o último argumento for uma data válida
-        const possivelData = partes[partes.length - 1];
-        if (/^\d{1,2}\/\d{1,2}(\/\d{4})?$|^\d{4}-\d{2}-\d{2}$/.test(possivelData)) {
-            dataLancamento = parseData(possivelData);
-            if (!dataLancamento) return msg.reply('❌ Data inválida! Use DD/MM, DD/MM/AAAA ou AAAA-MM-DD');
-            
-            // O resto é categoria (se houver)
-            categoria = partes.slice(2, -1).join(' ') || 'outros';
-        } else {
-            dataLancamento = new Date().toISOString();
-            categoria = partes.slice(2).join(' ') || 'outros';
-        }
-
-        const dados = carregarDados();
-
+        // ===================== REGISTRAR VENDA =====================
         if (comando === 'venda') {
+            if (partes.length < 2) return msg.reply('❌ Uso: venda 350 [data opcional]');
+            const valor = parseFloat(partes[1].replace(',', '.'));
+            if (isNaN(valor) || valor <= 0) return msg.reply('❌ Valor inválido!');
+
+            let dataLancamento = new Date().toISOString();
+            if (partes.length > 2) {
+                const possData = partes[2];
+                const parsed = parseData(possData);
+                if (parsed) dataLancamento = parsed;
+            }
+
+            const dados = carregarDados();
             dados.push({ tipo: 'entrada', categoria: 'venda', valor, data: dataLancamento });
             salvarDados(dados);
-            const dataFormatada = dataLancamento.slice(0,10);
-            return msg.reply(`✅ Venda registrada!\n💰 R$ ${valor.toFixed(2)} • ${dataFormatada}`);
+
+            msg.reply(`✅ Venda registrada!\n💰 R$ ${valor.toFixed(2)} • ${formatData(dataLancamento)}`);
+            return;
         }
 
+        // ===================== REGISTRAR SAÍDA =====================
         if (['compra', 'despesa', 'gasto'].includes(comando)) {
+            if (partes.length < 2) return msg.reply(`❌ Uso: ${comando} 150 [categoria] [data opcional]`);
+            const valor = parseFloat(partes[1].replace(',', '.'));
+            if (isNaN(valor) || valor <= 0) return msg.reply('❌ Valor inválido!');
+
+            let categoria = 'outros';
+            let dataLancamento = new Date().toISOString();
+
+            if (partes.length > 2) {
+                const possData = partes[partes.length - 1];
+                const parsed = parseData(possData);
+                if (parsed) {
+                    dataLancamento = parsed;
+                    categoria = partes.slice(2, -1).join(' ') || categoria;
+                } else {
+                    categoria = partes.slice(2).join(' ') || categoria;
+                }
+            }
+
+            const dados = carregarDados();
             dados.push({ tipo: 'saida', categoria, valor, data: dataLancamento });
             salvarDados(dados);
-            const dataFormatada = dataLancamento.slice(0,10);
+
             const nome = comando.charAt(0).toUpperCase() + comando.slice(1);
-            return msg.reply(`✅ ${nome} registrado!\n💸 R$ ${valor.toFixed(2)} • ${categoria} • ${dataFormatada}`);
+            msg.reply(`✅ ${nome} registrado!\n💸 R$ ${valor.toFixed(2)} • ${categoria} • ${formatData(dataLancamento)}`);
+            return;
         }
 
+        msg.reply('Comando não reconhecido. Digite "ajuda"');
+
     } catch (err) {
-        console.error(err);
-        msg.reply('❌ Erro interno. Tente novamente.');
+        console.error('Erro:', err);
+        msg.reply('❌ Ocorreu um erro. Tente novamente.');
     }
 });
 
