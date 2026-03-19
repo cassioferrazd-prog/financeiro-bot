@@ -1,0 +1,27 @@
+# node
+node_modules/
+
+# sessão whatsapp
+.wwebjs_auth/
+.wwebjs_cache/
+.session/
+.session-*
+
+# logs
+logs
+*.log
+npm-debug.log*
+
+# sistema
+.DS_Store
+Thumbs.db
+
+# ambiente
+.env
+
+# dados locais (opcional)
+# dados.json
+
+# cache
+.cache/
+tmp/
