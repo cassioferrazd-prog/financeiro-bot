@@ -4,7 +4,6 @@ const fs = require('fs');
 
 const ARQUIVO_DADOS = 'dados.json';
 
-// cria arquivo se não existir
 if (!fs.existsSync(ARQUIVO_DADOS)) {
     fs.writeFileSync(ARQUIVO_DADOS, JSON.stringify([]));
 }
@@ -17,49 +16,74 @@ function salvarDados(dados) {
     fs.writeFileSync(ARQUIVO_DADOS, JSON.stringify(dados, null, 2));
 }
 
-function detectarCategoria(texto) {
-    const t = texto.toLowerCase();
-
-    if (t.includes('gasolina') || t.includes('uber') || t.includes('combustivel') || t.includes('combustível')) {
-        return 'Transporte';
-    }
-
-    if (t.includes('almoço') || t.includes('almoco') || t.includes('comida') || t.includes('lanche')) {
-        return 'Alimentação';
-    }
-
-    if (t.includes('frete') || t.includes('entregador') || t.includes('envio')) {
-        return 'Logística';
-    }
-
-    if (t.includes('fornecedor') || t.includes('mercadoria') || t.includes('estoque')) {
-        return 'Estoque';
-    }
-
-    if (t.includes('aluguel') || t.includes('energia') || t.includes('internet') || t.includes('agua') || t.includes('água')) {
-        return 'Despesas Fixas';
-    }
-
-    if (t.includes('vendi') || t.includes('recebi') || t.includes('venda')) {
-        return 'Receita';
-    }
-
-    return 'Outros';
+function normalizarTexto(texto) {
+    return texto
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .trim();
 }
 
-function adicionar(tipo, valor, descricao, dataManual = null) {
+function detectarCategoria(tipoComando, descricao) {
+    const d = normalizarTexto(descricao);
+
+    if (tipoComando === 'venda') return 'venda';
+    if (tipoComando === 'compra') {
+        if (d.includes('fornecedor')) return 'fornecedor';
+        if (d.includes('estoque')) return 'estoque';
+        if (d.includes('mercadoria')) return 'mercadoria';
+        return 'compra';
+    }
+
+    if (tipoComando === 'despesa') {
+        if (d.includes('aluguel')) return 'aluguel';
+        if (d.includes('internet')) return 'internet';
+        if (d.includes('salario')) return 'salario';
+        if (d.includes('energia')) return 'energia';
+        if (d.includes('agua')) return 'agua';
+        return 'despesa fixa';
+    }
+
+    if (tipoComando === 'gasto') {
+        if (d.includes('feira')) return 'feira';
+        if (d.includes('gasolina')) return 'gasolina';
+        if (d.includes('transporte')) return 'transporte';
+        if (
+            d.includes('almoco') ||
+            d.includes('lanche') ||
+            d.includes('alimentacao') ||
+            d.includes('comida')
+        ) {
+            return 'alimentacao';
+        }
+        return 'variados';
+    }
+
+    return 'outros';
+}
+
+function mapearTipoFinanceiro(tipoComando) {
+    if (tipoComando === 'venda') return 'entrada';
+    return 'saida';
+}
+
+function adicionarLancamento(tipoComando, valor, descricao, dataManual = null) {
     const dados = lerDados();
 
     const data = dataManual
         ? new Date(dataManual.split('/').reverse().join('-'))
         : new Date();
 
+    const categoria = detectarCategoria(tipoComando, descricao);
+    const tipo = mapearTipoFinanceiro(tipoComando);
+
     dados.push({
         data: data.toISOString(),
         tipo,
+        origem: tipoComando,
         valor,
         descricao,
-        categoria: detectarCategoria(descricao)
+        categoria
     });
 
     salvarDados(dados);
@@ -69,10 +93,10 @@ function saldoTotal() {
     const dados = lerDados();
     let total = 0;
 
-    dados.forEach(item => {
+    for (const item of dados) {
         if (item.tipo === 'entrada') total += item.valor;
         else total -= item.valor;
-    });
+    }
 
     return total;
 }
@@ -105,102 +129,163 @@ function filtrarPeriodo(periodo) {
     });
 }
 
-function resumoPeriodo(periodo) {
+function resumirPeriodo(periodo) {
     const dados = filtrarPeriodo(periodo);
 
-    let entradas = 0;
-    let saidas = 0;
-    let qtdEntradas = 0;
-    let qtdSaidas = 0;
+    let vendas = 0;
+    let compras = 0;
+    let despesasFixas = 0;
+    let gastosVariaveis = 0;
 
-    dados.forEach(item => {
-        if (item.tipo === 'entrada') {
-            entradas += item.valor;
-            qtdEntradas++;
-        } else {
-            saidas += item.valor;
-            qtdSaidas++;
+    let qtdVendas = 0;
+    let qtdCompras = 0;
+    let qtdDespesas = 0;
+    let qtdGastos = 0;
+
+    for (const item of dados) {
+        if (item.origem === 'venda') {
+            vendas += item.valor;
+            qtdVendas++;
         }
-    });
 
-    const saldo = entradas - saidas;
+        if (item.origem === 'compra') {
+            compras += item.valor;
+            qtdCompras++;
+        }
+
+        if (item.origem === 'despesa') {
+            despesasFixas += item.valor;
+            qtdDespesas++;
+        }
+
+        if (item.origem === 'gasto') {
+            gastosVariaveis += item.valor;
+            qtdGastos++;
+        }
+    }
+
+    const totalSaidas = compras + despesasFixas + gastosVariaveis;
+    const saldo = vendas - totalSaidas;
+
     const titulo =
         periodo === 'dia' ? 'RESUMO DO DIA' :
         periodo === 'semana' ? 'RESUMO DA SEMANA' :
         'RESUMO DO MÊS';
 
-    return `📊 *${titulo}*
+    return `📊 ${titulo}
 
-💵 Entradas: R$ ${entradas.toFixed(2)}
-🧾 Saídas: R$ ${saidas.toFixed(2)}
-💰 Saldo: R$ ${saldo.toFixed(2)}
+💵 Vendas: R$ ${vendas.toFixed(2)}
+   • lançamentos: ${qtdVendas}
 
-📥 Lançamentos de entrada: ${qtdEntradas}
-📤 Lançamentos de saída: ${qtdSaidas}`;
+📦 Compras de mercadoria: R$ ${compras.toFixed(2)}
+   • lançamentos: ${qtdCompras}
+
+🏠 Despesas fixas: R$ ${despesasFixas.toFixed(2)}
+   • lançamentos: ${qtdDespesas}
+
+🧾 Gastos variáveis: R$ ${gastosVariaveis.toFixed(2)}
+   • lançamentos: ${qtdGastos}
+
+📉 Total de saídas: R$ ${totalSaidas.toFixed(2)}
+💰 Saldo: R$ ${saldo.toFixed(2)}`;
 }
 
-function relatorioCategorias() {
+function resumoCategoriasMes() {
     const dados = filtrarPeriodo('mes');
     const categorias = {};
 
-    dados.forEach(item => {
+    for (const item of dados) {
         if (item.tipo === 'saida') {
             if (!categorias[item.categoria]) {
                 categorias[item.categoria] = 0;
             }
             categorias[item.categoria] += item.valor;
         }
-    });
+    }
 
     const nomes = Object.keys(categorias);
 
     if (nomes.length === 0) {
-        return '📂 *GASTOS POR CATEGORIA*\n\nNenhuma saída registrada neste mês.';
+        return '📂 CATEGORIAS DO MÊS\n\nNenhuma saída registrada.';
     }
-
-    let texto = '📂 *GASTOS POR CATEGORIA (MÊS)*\n';
 
     nomes.sort((a, b) => categorias[b] - categorias[a]);
 
-    nomes.forEach(cat => {
-        texto += `\n• ${cat}: R$ ${categorias[cat].toFixed(2)}`;
-    });
+    let texto = '📂 CATEGORIAS DO MÊS\n';
+
+    for (const nome of nomes) {
+        texto += \n• ${nome}: R$ ${categorias[nome].toFixed(2)};
+    }
 
     return texto;
 }
 
-function ajuda() {
-    return `🤖 *COMANDOS DISPONÍVEIS*
+function ultimosLancamentos(periodo) {
+    const dados = filtrarPeriodo(periodo);
+
+    if (dados.length === 0) {
+        return '📋 Nenhum lançamento encontrado nesse período.';
+    }
+
+    const ordenados = [...dados]
+        .sort((a, b) => new Date(b.data) - new Date(a.data))
+        .slice(0, 10);
+
+    let texto = '📋 ÚLTIMOS LANÇAMENTOS\n';
+
+    for (const item of ordenados) {
+        const data = new Date(item.data).toLocaleDateString('pt-BR');
+        texto += \n• ${data} | ${item.origem} | R$ ${item.valor.toFixed(2)} | ${item.categoria};
+        if (item.descricao) {
+            texto += ` | ${item.descricao}`;
+        }
+    }
+
+    return texto;
+}
+
+function textoAjuda() {
+    return `🤖 COMANDOS
 
 📊 Consultas
-• saldo
-• dia
-• semana
-• mes
-• relatório
-• relatorio
-• categorias
+* saldo
+* dia
+* semana
+* mes
+* relatorio
+* categorias
+* lancamentos dia
+* lancamentos semana
+* lancamentos mes
+* ajuda
 
-💵 Entradas
-• vendi 200
-• recebi 350 pix
-• 18/03/2026 vendi 2000
+💵 Vendas
+* venda 350
 
-🧾 Saídas
-• gastei 20 almoço
-• paguei 100 fornecedor
-• 18/03/2026 gastei 10 entregador
+📦 Compras de mercadoria
+* compra 700 mercadoria
 
-ℹ️ Outros
-• ajuda`;
+🏠 Despesas fixas
+* despesa 1200 aluguel
+* despesa 99 internet
+* despesa 1800 salario funcionario
+
+🧾 Gastos variáveis
+* gasto 85 feira
+* gasto 40 gasolina
+* gasto 25 lanche
+
+📅 Com data manual
+* 18/03/2026 venda 350
+* 18/03/2026 compra 700 mercadoria
+* 18/03/2026 despesa 99 internet
+* 18/03/2026 gasto 25 lanche`;
 }
 
 function interpretarLancamento(textoOriginal) {
-    const texto = textoOriginal.trim().toLowerCase();
-    const palavras = texto.split(' ');
+    const texto = normalizarTexto(textoOriginal);
+    const palavras = texto.split(/\s+/);
 
-    let tipo = '';
-    let valor = 0;
     let dataManual = null;
 
     if (palavras[0] && palavras[0].includes('/')) {
@@ -208,51 +293,24 @@ function interpretarLancamento(textoOriginal) {
         palavras.shift();
     }
 
-    const textoSemData = palavras.join(' ');
+    const comando = palavras[0];
+    const valorTexto = palavras[1];
 
-    if (
-        textoSemData.includes('vendi') ||
-        textoSemData.includes('recebi') ||
-        textoSemData.startsWith('entrada')
-    ) {
-        tipo = 'entrada';
-    } else if (
-        textoSemData.includes('gastei') ||
-        textoSemData.includes('paguei') ||
-        textoSemData.startsWith('saida') ||
-        textoSemData.startsWith('saída')
-    ) {
-        tipo = 'saida';
-    } else {
-        return { erro: null };
+    if (!['venda', 'compra', 'despesa', 'gasto'].includes(comando)) {
+        return { ignorar: true };
     }
 
-    for (const p of palavras) {
-        const numero = parseFloat(p.replace(',', '.'));
-        if (!isNaN(numero)) {
-            valor = numero;
-            break;
-        }
+    const valor = parseFloat((valorTexto || '').replace(',', '.'));
+
+    if (isNaN(valor)) {
+        return { erro: '❌ Valor inválido.\n\nExemplo: venda 350' };
     }
 
-    if (!valor) {
-        return { erro: '❌ Não encontrei o valor.\n\nExemplo: vendi 200 ou gastei 20 almoço' };
-    }
+    const descricao = palavras.slice(2).join(' ').trim();
 
-    adicionar(tipo, valor, textoSemData, dataManual);
+    adicionarLancamento(comando, valor, descricao, dataManual);
 
-    const categoria = detectarCategoria(textoSemData);
-    const emoji = tipo === 'entrada' ? '✅' : '🧾';
-    const rotulo = tipo === 'entrada' ? 'Entrada registrada' : 'Saída registrada';
-
-    return {
-        sucesso: `${emoji} *${rotulo}*
-
-📌 Descrição: ${textoSemData}
-🏷️ Categoria: ${categoria}
-💵 Valor: R$ ${valor.toFixed(2)}
-💰 Saldo atual: R$ ${saldoTotal().toFixed(2)}`
-    };
+    return { sucessoSilencioso: true };
 }
 
 const client = new Client({
@@ -290,7 +348,7 @@ const mensagensProcessadas = new Set();
 
 async function processarMensagem(msg, origemEvento) {
     try {
-        const id = msg.id?._serialized || `${origemEvento}-${Date.now()}`;
+        const id = msg.id?._serialized || ${origemEvento}-${Date.now()};
 
         if (mensagensProcessadas.has(id)) return;
         mensagensProcessadas.add(id);
@@ -305,58 +363,69 @@ async function processarMensagem(msg, origemEvento) {
 
         if (msg.from && msg.from.includes('@g.us')) return;
 
-        const texto = (msg.body || '').trim().toLowerCase();
+        const textoBruto = (msg.body || '').trim();
+        const texto = normalizarTexto(textoBruto);
 
         if (!texto) return;
 
         if (texto === 'saldo') {
-            await msg.reply(`💰 *SALDO ATUAL*\n\nR$ ${saldoTotal().toFixed(2)}`);
+            await msg.reply(💰 *SALDO ATUAL*\n\nR$ ${saldoTotal().toFixed(2)});
             return;
         }
 
         if (texto === 'dia' || texto === 'hoje') {
-            await msg.reply(resumoPeriodo('dia'));
+            await msg.reply(resumirPeriodo('dia'));
             return;
         }
 
         if (texto === 'semana') {
-            await msg.reply(resumoPeriodo('semana'));
+            await msg.reply(resumirPeriodo('semana'));
             return;
         }
 
         if (
             texto === 'mes' ||
-            texto === 'mês' ||
             texto === 'relatorio' ||
-            texto === 'relatório' ||
             texto === 'relatorio do mes' ||
-            texto === 'relatório do mes' ||
-            texto === 'relatório do mês' ||
-            texto === 'relatorio do mês'
+            texto === 'relatorio do mes atual'
         ) {
-            await msg.reply(resumoPeriodo('mes'));
+            await msg.reply(resumirPeriodo('mes'));
             return;
         }
 
         if (texto === 'categorias') {
-            await msg.reply(relatorioCategorias());
+            await msg.reply(resumoCategoriasMes());
+            return;
+        }
+
+        if (texto === 'lancamentos dia') {
+            await msg.reply(ultimosLancamentos('dia'));
+            return;
+        }
+
+        if (texto === 'lancamentos semana') {
+            await msg.reply(ultimosLancamentos('semana'));
+            return;
+        }
+
+        if (texto === 'lancamentos mes') {
+            await msg.reply(ultimosLancamentos('mes'));
             return;
         }
 
         if (texto === 'ajuda' || texto === 'comandos') {
-            await msg.reply(ajuda());
+            await msg.reply(textoAjuda());
             return;
         }
 
-        const resultado = interpretarLancamento(texto);
+        const resultado = interpretarLancamento(textoBruto);
 
         if (resultado.erro) {
             await msg.reply(resultado.erro);
             return;
         }
 
-        if (resultado.sucesso) {
-            await msg.reply(resultado.sucesso);
+        if (resultado.sucessoSilencioso) {
             return;
         }
 
