@@ -175,7 +175,7 @@ client.on('message_create', async msg => {
             dados.push({
                 tipo: 'entrada',
                 categoria: 'venda',
-                valor,
+                valor: valor,
                 data: hoje()
             });
             salvarDados(dados);
@@ -190,8 +190,8 @@ client.on('message_create', async msg => {
             const dados = carregarDados();
             dados.push({
                 tipo: 'saida',
-                categoria,
-                valor,
+                categoria: categoria,
+                valor: valor,
                 data: hoje()
             });
             salvarDados(dados);
@@ -206,8 +206,8 @@ client.on('message_create', async msg => {
             const dados = carregarDados();
             dados.push({
                 tipo: 'saida',
-                categoria,
-                valor,
+                categoria: categoria,
+                valor: valor,
                 data: hoje()
             });
             salvarDados(dados);
@@ -222,8 +222,8 @@ client.on('message_create', async msg => {
             const dados = carregarDados();
             dados.push({
                 tipo: 'saida',
-                categoria,
-                valor,
+                categoria: categoria,
+                valor: valor,
                 data: hoje()
             });
             salvarDados(dados);
