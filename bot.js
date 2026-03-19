@@ -4,7 +4,7 @@ const fs = require('fs');
 
 const ARQUIVO_DADOS = 'dados.json';
 
-// cria arquivo de dados se não existir
+// cria arquivo se não existir
 if (!fs.existsSync(ARQUIVO_DADOS)) {
     fs.writeFileSync(ARQUIVO_DADOS, JSON.stringify([]));
 }
@@ -15,6 +15,54 @@ function lerDados() {
 
 function salvarDados(dados) {
     fs.writeFileSync(ARQUIVO_DADOS, JSON.stringify(dados, null, 2));
+}
+
+function detectarCategoria(texto) {
+    const t = texto.toLowerCase();
+
+    if (t.includes('gasolina') || t.includes('uber') || t.includes('combustivel') || t.includes('combustível')) {
+        return 'Transporte';
+    }
+
+    if (t.includes('almoço') || t.includes('almoco') || t.includes('comida') || t.includes('lanche')) {
+        return 'Alimentação';
+    }
+
+    if (t.includes('frete') || t.includes('entregador') || t.includes('envio')) {
+        return 'Logística';
+    }
+
+    if (t.includes('fornecedor') || t.includes('mercadoria') || t.includes('estoque')) {
+        return 'Estoque';
+    }
+
+    if (t.includes('aluguel') || t.includes('energia') || t.includes('internet') || t.includes('agua') || t.includes('água')) {
+        return 'Despesas Fixas';
+    }
+
+    if (t.includes('vendi') || t.includes('recebi') || t.includes('venda')) {
+        return 'Receita';
+    }
+
+    return 'Outros';
+}
+
+function adicionar(tipo, valor, descricao, dataManual = null) {
+    const dados = lerDados();
+
+    const data = dataManual
+        ? new Date(dataManual.split('/').reverse().join('-'))
+        : new Date();
+
+    dados.push({
+        data: data.toISOString(),
+        tipo,
+        valor,
+        descricao,
+        categoria: detectarCategoria(descricao)
+    });
+
+    salvarDados(dados);
 }
 
 function saldoTotal() {
@@ -29,43 +77,182 @@ function saldoTotal() {
     return total;
 }
 
-function adicionar(tipo, valor, descricao) {
-    const dados = lerDados();
-
-    dados.push({
-        data: new Date().toISOString(),
-        tipo,
-        valor,
-        descricao
-    });
-
-    salvarDados(dados);
-}
-
-function resumoMes() {
+function filtrarPeriodo(periodo) {
     const dados = lerDados();
     const agora = new Date();
 
-    let entradas = 0;
-    let saidas = 0;
-
-    dados.forEach(item => {
+    return dados.filter(item => {
         const data = new Date(item.data);
 
-        if (
-            data.getMonth() === agora.getMonth() &&
-            data.getFullYear() === agora.getFullYear()
-        ) {
-            if (item.tipo === 'entrada') entradas += item.valor;
-            else saidas += item.valor;
+        if (periodo === 'dia') {
+            return data.toDateString() === agora.toDateString();
+        }
+
+        if (periodo === 'semana') {
+            const inicio = new Date(agora);
+            inicio.setDate(agora.getDate() - 7);
+            return data >= inicio;
+        }
+
+        if (periodo === 'mes') {
+            return (
+                data.getMonth() === agora.getMonth() &&
+                data.getFullYear() === agora.getFullYear()
+            );
+        }
+
+        return false;
+    });
+}
+
+function resumoPeriodo(periodo) {
+    const dados = filtrarPeriodo(periodo);
+
+    let entradas = 0;
+    let saidas = 0;
+    let qtdEntradas = 0;
+    let qtdSaidas = 0;
+
+    dados.forEach(item => {
+        if (item.tipo === 'entrada') {
+            entradas += item.valor;
+            qtdEntradas++;
+        } else {
+            saidas += item.valor;
+            qtdSaidas++;
         }
     });
 
-    return `📊 RELATÓRIO DO MÊS
+    const saldo = entradas - saidas;
+    const titulo =
+        periodo === 'dia' ? 'RESUMO DO DIA' :
+        periodo === 'semana' ? 'RESUMO DA SEMANA' :
+        'RESUMO DO MÊS';
 
-Entradas: R$ ${entradas}
-Saídas: R$ ${saidas}
-Saldo: R$ ${entradas - saidas}`;
+    return `📊 *${titulo}*
+
+💵 Entradas: R$ ${entradas.toFixed(2)}
+🧾 Saídas: R$ ${saidas.toFixed(2)}
+💰 Saldo: R$ ${saldo.toFixed(2)}
+
+📥 Lançamentos de entrada: ${qtdEntradas}
+📤 Lançamentos de saída: ${qtdSaidas}`;
+}
+
+function relatorioCategorias() {
+    const dados = filtrarPeriodo('mes');
+    const categorias = {};
+
+    dados.forEach(item => {
+        if (item.tipo === 'saida') {
+            if (!categorias[item.categoria]) {
+                categorias[item.categoria] = 0;
+            }
+            categorias[item.categoria] += item.valor;
+        }
+    });
+
+    const nomes = Object.keys(categorias);
+
+    if (nomes.length === 0) {
+        return '📂 *GASTOS POR CATEGORIA*\n\nNenhuma saída registrada neste mês.';
+    }
+
+    let texto = '📂 *GASTOS POR CATEGORIA (MÊS)*\n';
+
+    nomes.sort((a, b) => categorias[b] - categorias[a]);
+
+    nomes.forEach(cat => {
+        texto += `\n• ${cat}: R$ ${categorias[cat].toFixed(2)}`;
+    });
+
+    return texto;
+}
+
+function ajuda() {
+    return `🤖 *COMANDOS DISPONÍVEIS*
+
+📊 Consultas
+• saldo
+• dia
+• semana
+• mes
+• relatório
+• relatorio
+• categorias
+
+💵 Entradas
+• vendi 200
+• recebi 350 pix
+• 18/03/2026 vendi 2000
+
+🧾 Saídas
+• gastei 20 almoço
+• paguei 100 fornecedor
+• 18/03/2026 gastei 10 entregador
+
+ℹ️ Outros
+• ajuda`;
+}
+
+function interpretarLancamento(textoOriginal) {
+    const texto = textoOriginal.trim().toLowerCase();
+    const palavras = texto.split(' ');
+
+    let tipo = '';
+    let valor = 0;
+    let dataManual = null;
+
+    if (palavras[0] && palavras[0].includes('/')) {
+        dataManual = palavras[0];
+        palavras.shift();
+    }
+
+    const textoSemData = palavras.join(' ');
+
+    if (
+        textoSemData.includes('vendi') ||
+        textoSemData.includes('recebi') ||
+        textoSemData.startsWith('entrada')
+    ) {
+        tipo = 'entrada';
+    } else if (
+        textoSemData.includes('gastei') ||
+        textoSemData.includes('paguei') ||
+        textoSemData.startsWith('saida') ||
+        textoSemData.startsWith('saída')
+    ) {
+        tipo = 'saida';
+    } else {
+        return { erro: null };
+    }
+
+    for (const p of palavras) {
+        const numero = parseFloat(p.replace(',', '.'));
+        if (!isNaN(numero)) {
+            valor = numero;
+            break;
+        }
+    }
+
+    if (!valor) {
+        return { erro: '❌ Não encontrei o valor.\n\nExemplo: vendi 200 ou gastei 20 almoço' };
+    }
+
+    adicionar(tipo, valor, textoSemData, dataManual);
+
+    const categoria = detectarCategoria(textoSemData);
+    const emoji = tipo === 'entrada' ? '✅' : '🧾';
+    const rotulo = tipo === 'entrada' ? 'Entrada registrada' : 'Saída registrada';
+
+    return {
+        sucesso: `${emoji} *${rotulo}*
+
+📌 Descrição: ${textoSemData}
+🏷️ Categoria: ${categoria}
+💵 Valor: R$ ${valor.toFixed(2)}
+💰 Saldo atual: R$ ${saldoTotal().toFixed(2)}`
+    };
 }
 
 const client = new Client({
@@ -99,16 +286,13 @@ client.on('disconnected', reason => {
     console.log('⚠️ WhatsApp desconectado:', reason);
 });
 
-// evita processar a mesma mensagem duas vezes
 const mensagensProcessadas = new Set();
 
 async function processarMensagem(msg, origemEvento) {
     try {
         const id = msg.id?._serialized || `${origemEvento}-${Date.now()}`;
 
-        if (mensagensProcessadas.has(id)) {
-            return;
-        }
+        if (mensagensProcessadas.has(id)) return;
         mensagensProcessadas.add(id);
 
         console.log('-----------------------------');
@@ -119,85 +303,72 @@ async function processarMensagem(msg, origemEvento) {
         console.log('BODY:', msg.body);
         console.log('-----------------------------');
 
-        // ignora grupos
         if (msg.from && msg.from.includes('@g.us')) return;
 
-        const texto = (msg.body || '').toLowerCase().trim();
+        const texto = (msg.body || '').trim().toLowerCase();
 
-        // só reage a mensagens que começam com "bot"
-        if (!texto.startsWith('bot')) return;
+        if (!texto) return;
 
-        const comando = texto.replace(/^bot/, '').trim();
+        if (texto === 'saldo') {
+            await msg.reply(`💰 *SALDO ATUAL*\n\nR$ ${saldoTotal().toFixed(2)}`);
+            return;
+        }
 
-        if (comando === 'saldo') {
-            await msg.reply(`💰 Saldo: R$ ${saldoTotal()}`);
+        if (texto === 'dia' || texto === 'hoje') {
+            await msg.reply(resumoPeriodo('dia'));
+            return;
+        }
+
+        if (texto === 'semana') {
+            await msg.reply(resumoPeriodo('semana'));
             return;
         }
 
         if (
-            comando === 'relatorio' ||
-            comando === 'relatório' ||
-            comando === 'mes' ||
-            comando === 'mês' ||
-            comando === 'relatorio do mes' ||
-            comando === 'relatório do mês'
+            texto === 'mes' ||
+            texto === 'mês' ||
+            texto === 'relatorio' ||
+            texto === 'relatório' ||
+            texto === 'relatorio do mes' ||
+            texto === 'relatório do mes' ||
+            texto === 'relatório do mês' ||
+            texto === 'relatorio do mês'
         ) {
-            await msg.reply(resumoMes());
+            await msg.reply(resumoPeriodo('mes'));
             return;
         }
 
-        if (comando.startsWith('vendi') || comando.startsWith('recebi')) {
-            const partes = comando.split(' ');
-            const valor = parseFloat((partes[1] || '').replace(',', '.'));
-
-            if (isNaN(valor)) {
-                await msg.reply('❌ Valor inválido');
-                return;
-            }
-
-            adicionar('entrada', valor, comando);
-
-            await msg.reply(`✅ Entrada registrada
-
-💰 Saldo atual: R$ ${saldoTotal()}`);
+        if (texto === 'categorias') {
+            await msg.reply(relatorioCategorias());
             return;
         }
 
-        if (comando.startsWith('gastei') || comando.startsWith('paguei')) {
-            const partes = comando.split(' ');
-            const valor = parseFloat((partes[1] || '').replace(',', '.'));
-
-            if (isNaN(valor)) {
-                await msg.reply('❌ Valor inválido');
-                return;
-            }
-
-            adicionar('saida', valor, comando);
-
-            await msg.reply(`✅ Saída registrada
-
-💰 Saldo atual: R$ ${saldoTotal()}`);
+        if (texto === 'ajuda' || texto === 'comandos') {
+            await msg.reply(ajuda());
             return;
         }
 
-        await msg.reply(
-            '❌ Comando não reconhecido.\n\nUse:\n' +
-            'bot saldo\n' +
-            'bot relatorio\n' +
-            'bot vendi 200\n' +
-            'bot gastei 20 almoço'
-        );
+        const resultado = interpretarLancamento(texto);
+
+        if (resultado.erro) {
+            await msg.reply(resultado.erro);
+            return;
+        }
+
+        if (resultado.sucesso) {
+            await msg.reply(resultado.sucesso);
+            return;
+        }
+
     } catch (erro) {
         console.error('ERRO AO PROCESSAR MENSAGEM:', erro);
     }
 }
 
-// pega mensagens recebidas
 client.on('message', async msg => {
     await processarMensagem(msg, 'message');
 });
 
-// pega mensagens criadas/enviadas, inclusive quando você fala com você mesmo
 client.on('message_create', async msg => {
     await processarMensagem(msg, 'message_create');
 });
